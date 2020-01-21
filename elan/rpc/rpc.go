@@ -413,7 +413,11 @@ func (s *server) readAllBlob(ctx context.Context, prefix string, digest *pb.Dige
 		return nil, err
 	}
 	defer r.Close()
-	return ioutil.ReadAll(r)
+	b, err := ioutil.ReadAll(r)
+	if err == nil {
+		s.cacheBlob(key, b)
+	}
+	return b, err
 }
 
 func (s *server) readBlobIntoMessage(ctx context.Context, prefix string, digest *pb.Digest, message proto.Message) error {
@@ -436,6 +440,12 @@ func (s *server) cachedBlob(key string) ([]byte, bool) {
 	}
 	cacheMisses.Inc()
 	return nil, false
+}
+
+func (s *server) cacheBlob(key string, blob []byte) {
+	if int64(len(blob)) < s.maxCacheItemSize {
+		s.cache.Set(key, blob, int64(len(blob)))
+	}
 }
 
 func (s *server) writeBlob(ctx context.Context, prefix string, digest *pb.Digest, r io.Reader) error {
@@ -470,9 +480,7 @@ func (s *server) writeBlob(ctx context.Context, prefix string, digest *pb.Digest
 	if err := wc.Close(); err != nil {
 		return err
 	}
-	if digest.SizeBytes < s.maxCacheItemSize {
-		s.cache.Set(key, buf.Bytes(), digest.SizeBytes)
-	}
+	s.cacheBlob(key, buf.Bytes())
 	return nil
 }
 
@@ -573,8 +581,7 @@ func (r *cachingReader) Read(buf []byte) (int, error) {
 func (r *cachingReader) Close() error {
 	err := r.r.Close()
 	if err == nil && r.err == nil {
-		blob := r.buf.Bytes()
-		r.s.cache.Set(r.key, blob, int64(len(blob)))
+		r.s.cacheBlob(r.key, r.buf.Bytes())
 	}
 	return err
 }
