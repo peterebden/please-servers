@@ -94,7 +94,7 @@ func init() {
 }
 
 // ServeForever serves on the given port until terminated.
-func ServeForever(port int, storage, keyFile, certFile string, maxCacheSize, maxCacheItemSize uint64, numCounters int64, parallelism int) {
+func ServeForever(port int, storage, keyFile, certFile string, maxCacheSize, maxCacheItemSize uint64, numCounters int64) {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		log.Fatalf("Failed to listen on port %d: %v", port, err)
@@ -106,7 +106,6 @@ func ServeForever(port int, storage, keyFile, certFile string, maxCacheSize, max
 	srv := &server{
 		bytestreamRe: regexp.MustCompile("(?:uploads/[0-9a-f-]+/)?blobs/([0-9a-f]+)/([0-9]+)"),
 		bucket:       bucket,
-		limiter:      make(chan struct{}, parallelism),
 	}
 	srv.pool = newPool(srv)
 	if numCounters == 0 {
@@ -223,9 +222,7 @@ func (s *server) blobExists(ctx context.Context, key string) bool {
 	if _, present := s.cachedBlob(key); present {
 		return true
 	}
-	s.limiter <- struct{}{}
 	exists, _ := s.bucket.Exists(ctx, key)
-	<-s.limiter
 	return exists
 }
 
@@ -239,8 +236,6 @@ func (s *server) BatchUpdateBlobs(ctx context.Context, req *pb.BatchUpdateBlobsR
 	wg.Add(len(req.Requests))
 	for i, r := range req.Requests {
 		go func(i int, r *pb.BatchUpdateBlobsRequest_Request) {
-			s.limiter <- struct{}{}
-			defer func() { <-s.limiter }()
 			rr := &pb.BatchUpdateBlobsResponse_Response{
 				Status: &rpcstatus.Status{},
 			}
@@ -271,8 +266,6 @@ func (s *server) BatchReadBlobs(ctx context.Context, req *pb.BatchReadBlobsReque
 	wg.Add(len(req.Digests))
 	for i, d := range req.Digests {
 		go func(i int, d *pb.Digest) {
-			s.limiter <- struct{}{}
-			defer func() { <-s.limiter }()
 			rr := &pb.BatchReadBlobsResponse_Response{
 				Status: &rpcstatus.Status{},
 				Digest: d,
