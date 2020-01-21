@@ -6,6 +6,8 @@ package rpc
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -453,7 +455,7 @@ func (s *server) writeBlob(ctx context.Context, prefix string, digest *pb.Digest
 	start := time.Now()
 	defer writeLatencies.Observe(time.Since(start).Seconds())
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	defer cancel() // This causes any error before Close() to fail the write.
 	w, err := s.bucket.NewWriter(ctx, key, nil)
 	if err != nil {
 		return err
@@ -464,11 +466,19 @@ func (s *server) writeBlob(ctx context.Context, prefix string, digest *pb.Digest
 	if digest.SizeBytes < s.maxCacheItemSize {
 		wr = io.MultiWriter(w, &buf)
 	}
+	h := sha256.New()
+	if prefix == "cas" { // The action cache does not have contents equivalent to their digest.
+		wr = io.MultiWriter(wr, h)
+	}
 	n, err := io.Copy(wr, r)
 	bytesReceived.Add(float64(n))
 	if err != nil {
-		wc.Close()
 		return err
+	}
+	if prefix == "cas" {
+		if receivedDigest := hex.EncodeToString(h.Sum(nil)); receivedDigest != digest.Hash {
+			return fmt.Errorf("Rejecting write of %s; actual received digest was %s", digest.Hash, receivedDigest)
+		}
 	}
 	if err := wc.Close(); err != nil {
 		return err
