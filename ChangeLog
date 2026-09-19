@@ -1,3 +1,8 @@
+Version 11.18.0
+---------------
+    * Advertise support for REAPI v2.3
+    * Handle newer `output_symlinks` field as well as older, deprecated fields.
+
 Version 11.17.0
 ---------------
     * Upgrade Go toolchain, packages and Please plugin
