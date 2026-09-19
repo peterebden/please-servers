@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -1196,7 +1197,17 @@ func (w *worker) collectOutputs(ar *pb.ActionResult, cmd *pb.Command) error {
 	ar.OutputDirectories = ar2.OutputDirectories
 	ar.OutputFileSymlinks = ar2.OutputFileSymlinks
 	ar.OutputDirectorySymlinks = ar2.OutputDirectorySymlinks
+	ar.OutputSymlinks = allOutputSymlinks(ar2)
 	return err
+}
+
+// allOutputSymlinks returns all the output symlinks from an action result, preferring output_symlinks
+// if it's populated and falling back to the deprecated per-type fields otherwise.
+func allOutputSymlinks(ar *pb.ActionResult) []*pb.OutputSymlink {
+	if len(ar.OutputSymlinks) > 0 {
+		return ar.OutputSymlinks
+	}
+	return slices.Concat(ar.OutputFileSymlinks, ar.OutputDirectorySymlinks)
 }
 
 // update sends an update on the response channel
