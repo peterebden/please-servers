@@ -291,7 +291,7 @@ func (s *server) GetCapabilities(ctx context.Context, req *pb.GetCapabilitiesReq
 			ExecEnabled:    true,
 		},
 		LowApiVersion:  &semver.SemVer{Major: 2, Minor: 0},
-		HighApiVersion: &semver.SemVer{Major: 2, Minor: 3},
+		HighApiVersion: &semver.SemVer{Major: 2, Minor: 12},
 	}, nil
 }
 
